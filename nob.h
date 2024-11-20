@@ -297,6 +297,11 @@ typedef struct {
 
 bool nob_read_entire_file(const char *path, Nob_String_Builder *sb);
 
+// nob_dotenv function loads key=value pairs from a `dotenv_path` file
+// and sets them in the process environment using the `setenv(3)` on
+// Posix and `SetEnvironmentVariable` on Windows.
+bool nob_dotenv(const char* dotenv_path, int overwrite);
+
 // Append a sized buffer to a string builder
 #define nob_sb_append_buf(sb, buf, size) nob_da_append_many(sb, buf, size)
 
@@ -1511,6 +1516,43 @@ defer:
     return result;
 }
 
+bool nob_dotenv(const char* dotenv_path, int overwrite)
+{
+    Nob_String_Builder sb = {0};
+    if (!nob_read_entire_file(dotenv_path, &sb)) {
+        return false;
+    }
+
+    int linum = 0;
+    Nob_String_View sv = nob_sb_to_sv(sb);
+    while (sv.count > 0) {
+        linum++;
+        Nob_String_View line = nob_sv_trim(nob_sv_chop_by_delim(&sv, '\n'));
+        if (line.count <= 0 || line.data[0] == '#') {
+            // ignore empty lines or comments
+            continue;
+        }
+
+        size_t checkpoint = nob_temp_save();
+        const char *key   = nob_temp_sv_to_cstr(nob_sv_trim(nob_sv_chop_by_delim(&line, '=')));
+        const char *value = nob_temp_sv_to_cstr(nob_sv_trim(line));
+
+        #ifdef _WIN32
+        // FIXME: this is not proper tested on windows
+        // TODO: afaik on Windows SetEnvironmentVariable overwrite is implied, but I'm not sure!
+        if (!SetEnvironmentVariable(key, value)) {
+            nob_log(NOB_WARNING, "could not set environment variable from `%s` line `%d`: %s", dotenv_path, linum, nob_win32_error_message(GetLastError()));
+        }
+        #else
+        if (setenv(key, value, overwrite) != 0) {
+            nob_log(NOB_WARNING, "could not set environment variable from `%s` line `%d`: %s", dotenv_path, linum, strerror(errno));
+        }
+        #endif
+        nob_temp_rewind(checkpoint);
+    }
+    return true;
+}
+
 Nob_String_View nob_sv_chop_by_delim(Nob_String_View *sv, char delim)
 {
     size_t i = 0;
@@ -1785,6 +1827,7 @@ int closedir(DIR *dirp)
         #define da_append_many nob_da_append_many
         #define String_Builder Nob_String_Builder
         #define read_entire_file nob_read_entire_file
+        #define dotenv nob_dotenv
         #define sb_append_buf nob_sb_append_buf
         #define sb_append_cstr nob_sb_append_cstr
         #define sb_append_null nob_sb_append_null
