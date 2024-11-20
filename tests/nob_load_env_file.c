@@ -14,10 +14,10 @@ int main(void)
     sb_append_cstr(&content, "\n");
     sb_append_cstr(&content, temp_sprintf("%s=%s\n", key, value));
 
-    const char *dotenv_file_path = BUILD_FOLDER"nob_dotenv_env";
+    const char *env_file_path = BUILD_FOLDER"nob_load_env_file.txt";
 
-    if (!write_entire_file(dotenv_file_path, content.items, content.count)) return 1;
-    if (!dotenv(dotenv_file_path, 1)) return 1;
+    if (!write_entire_file(env_file_path, content.items, content.count)) return 1;
+    if (!load_env_file(env_file_path, 1)) return 1;
 
     char *result = getenv(key);
     if (result == NULL) {
